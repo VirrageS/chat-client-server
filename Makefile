@@ -1,14 +1,13 @@
 TARGET: server client
 
-CC	= cc
-CFLAGS	= -Wall -O2 -std=gnu99
-LFLAGS	= -Wall
+CC		= gcc
+CFLAGS	= -Wall -O2 -std=gnu99 -pedantic-errors
 
-echo-server: server.o err.o
-	$(CC) $(LFLAGS) $^ -o $@
+server: server.o err.o
+	$(CC) $(CFLAGS) $^ -o $@
 
-echo-client: client.o err.o
-	$(CC) $(LFLAGS) $^ -o $@
+client: client.o err.o
+	$(CC) $(CFLAGS) $^ -o $@
 
 .PHONY: clean TARGET
 clean:
