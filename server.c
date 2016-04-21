@@ -8,31 +8,80 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <errno.h>
+#include <signal.h>
 
 #include "err.h"
+#include "chat.h"
 
-#define PORT 20160
 #define MAX_CLIENTS 20
 #define BUFFER_SIZE 20000
 
-int main (int argc, char *argv[])
-{
-    // INITIAL VALUES
-    int on = 1; // WTF?!
-    int client_socket = -1;
+typedef struct {
+    ssize_t in_buffer; // how many bytes is in buffer
+    int has_message; // check if message is read
+    char buffer[BUFFER_SIZE]; // buffer
+} buffer_t;
 
-    int listen_socket = -1, err = 0, len = 0;
+typedef struct pollfd connection_t;
+
+connection_t connections[MAX_CLIENTS + 10];
+nfds_t connections_len = 1;
+int listen_socket = -1;
+
+// buffer_t read_buffer[MAX_CLIENTS];
+
+void close_connection()
+{
+    debug_print("%s\n", "[server] closing connection");
+
+    for (int k = 1; k < connections_len; ++k) {
+        close(connections[k].fd);
+    }
+
+    close(listen_socket);
+}
+
+
+void broadcast_message(buffer_t *buf, connection_t conn)
+{
+    int err;
+
+    for (int k = 0; k < connections_len; ++k) {
+        if ((connections[k].fd <= 0) || (conn.fd == connections[k].fd) || (listen_socket == connections[k].fd))
+            continue;
+
+        debug_print("broadcasting (from: %d; message: [%s] (bytes %zd); to: %d)\n", conn.fd, buf->buffer, buf->in_buffer, connections[k].fd);
+        err = send(connections[k].fd, buf->buffer, buf->in_buffer, 0);
+        if (err < 0) {
+            syserr("send() failed");
+            break;
+        }
+    }
+
+    // clear buffer
+    buf->has_message = false;
+    buf->in_buffer = 0;
+    memset(buf->buffer, 0, sizeof(buf->buffer));
+}
+
+int main(int argc, char *argv[])
+{
+    signal(SIGINT, close_connection);
+    signal(SIGKILL, close_connection);
+
+    // INITIAL VALUES
+    int on = 1; // WTF?! magic..
+    int client_socket = -1, err = 0;
     uint16_t port = 0;
 
     struct sockaddr_in server_address;
 
-    struct pollfd connections[MAX_CLIENTS + 10];
-    nfds_t connections_len = 1, current_conn_len = 0;
+    nfds_t current_conn_len = 0;
 
     bool end_server = false; // checks if we should end server
     bool close_connection = false; // checks if we should close connection
 
-    char buffer[BUFFER_SIZE];
+    buffer_t read_buffer[MAX_CLIENTS];
 
 
     // INITIAL FUNCTIONS
@@ -77,16 +126,15 @@ int main (int argc, char *argv[])
         syserr("listen() failed");
     }
 
-
     //
     memset(connections, 0, sizeof(connections));
     connections[0].fd = listen_socket;
-    connections[0].events = POLLIN;
+    connections[0].events = POLLIN | POLLHUP;
 
 
     // SERVER
     while (!end_server) {
-        printf("waiting on poll() ...\n");
+        debug_print("%s\n", "waiting on poll() ...");
 
         // call poll() and wait 3 minutes for it to complete
         err = poll(connections, connections_len, 3 * 60 * 1000);
@@ -95,7 +143,7 @@ int main (int argc, char *argv[])
         }
 
         if (err == 0) {
-            printf("poll() timed out. exiting...");
+            debug_print("%s\n", "poll() timed out. exiting...");
             break;
         }
 
@@ -105,15 +153,15 @@ int main (int argc, char *argv[])
             if (connections[i].revents == 0)
                 continue;
 
-            if (connections[i].revents != POLLIN) {
-                printf("[ERROR] revents = %d\n", connections[i].revents);
+            if (!(connections[i].revents & (POLLIN | POLLHUP))) {
+                debug_print("[ERROR] revents = %d\n", connections[i].revents);
                 end_server = true;
                 break;
             }
 
             if (connections[i].fd == listen_socket) {
                 // listening socket is readable
-                printf("listening socket is readable\n");
+                debug_print("%s\n", "listening socket is readable");
 
                 do {
                     client_socket = accept(listen_socket, NULL, NULL);
@@ -125,44 +173,44 @@ int main (int argc, char *argv[])
                         break;
                     }
 
-                    printf("new incoming connection - %d", client_socket);
+                    debug_print("new incoming connection - %d\n", client_socket);
                     connections[connections_len].fd = client_socket;
                     connections[connections_len].events = POLLIN;
                     connections_len++;
                 } while (client_socket != -1);
             } else {
-                printf("descriptor %d is readable\n", connections[i].fd);
+                debug_print("descriptor %d is readable\n", connections[i].fd);
 
+                buffer_t *current_buffer = &read_buffer[i];
+                current_buffer->in_buffer = 0;
                 close_connection = false;
                 do {
-                    // TODO: change `err` to `bytes_received` or something else
-                    err = recv(connections[i].fd, buffer, sizeof(buffer), 0);
-                    if (err < 0) {
-                        if (errno != EWOULDBLOCK) {
+
+                    ssize_t bytes_received = recv(connections[i].fd, &(current_buffer->buffer[current_buffer->in_buffer]), sizeof(char) * (BUFFER_SIZE - current_buffer->in_buffer - 1), 0);
+                    if (bytes_received < 0) {
+                        if (errno != EWOULDBLOCK)
                             syserr("recv() failed");
-                        }
 
                         break;
                     }
 
                     // check if connection has been closed by client
-                    if (err == 0) {
-                        printf("connection closed\n");
+                    if (bytes_received == 0) {
+                        debug_print("connection %d closed\n", connections[i].fd);
                         close_connection = true;
                         break;
                     }
 
-                    len = err;
-                    printf("%d bytes received\n", len);
+                    current_buffer->in_buffer += bytes_received;
+                    current_buffer->has_message = true;
 
-                    // echo message back
-                    err = send(connections[i].fd, buffer, len, 0);
-                    if (err < 0) {
-                        syserr("send() failed");
-                        close_connection = true;
-                        break;
-                    }
+                    debug_print("message: [%s] (bytes %zd)\n", current_buffer->buffer, current_buffer->in_buffer);
                 } while (true);
+
+                // broadcast message
+                if (current_buffer->has_message) {
+                    broadcast_message(current_buffer, connections[i]);
+                }
             }
 
             if (close_connection) {

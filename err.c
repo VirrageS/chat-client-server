@@ -14,6 +14,9 @@ void syserr(const char *fmt, ...)
   vfprintf(stderr, fmt, fmt_args);
   va_end(fmt_args);
   fprintf(stderr, " (%d; %s)\n", errno, strerror(errno));
+
+  close_connection();
+
   exit(EXIT_FAILURE);
 }
 
@@ -26,5 +29,8 @@ void fatal(const char *fmt, ...)
   vfprintf(stderr, fmt, fmt_args);
   va_end(fmt_args);
   fprintf(stderr, "\n");
+
+  close_connection();
+
   exit(EXIT_FAILURE);
 }
