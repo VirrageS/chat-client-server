@@ -73,31 +73,18 @@ int read_from_socket()
     return 0;
 }
 
-int main(int argc, char *argv[])
+void set_client_socket(char *host, char *port)
 {
-    signal(SIGINT, close_connections);
-    signal(SIGKILL, close_connections);
-
-    int err;
+    int err = 0;
     struct addrinfo addr_hints;
     struct addrinfo *addr_result;
-    bool end_client = false;
-
-    if (argc > 3) {
-        fatal("Usage: %s host [port]\n", argv[0]);
-    }
-
-    // set default port
-    if (argc == 2) {
-        argv[2] = STR(PORT);
-    }
 
     // 'converting' host/port in string to struct addrinfo
     memset(&addr_hints, 0, sizeof(struct addrinfo));
     addr_hints.ai_family = AF_INET; // IPv4
     addr_hints.ai_socktype = SOCK_STREAM;
     addr_hints.ai_protocol = IPPROTO_TCP;
-    err = getaddrinfo(argv[1], argv[2], &addr_hints, &addr_result);
+    err = getaddrinfo(host, port, &addr_hints, &addr_result);
     if (err == EAI_SYSTEM) { // system error
         syserr("getaddrinfo: %s", gai_strerror(err));
     } else if (err != 0) { // other error (host not found, etc.)
@@ -116,18 +103,42 @@ int main(int argc, char *argv[])
 
     freeaddrinfo(addr_result);
 
+    // make client socket nonblocking
+    err = fcntl(client_socket, F_SETFL, fcntl(client_socket, F_GETFL, 0) | O_NONBLOCK);
+    if (err < 0) {
+        syserr("fcntl() failed");
+    }
+}
+
+int main(int argc, char *argv[])
+{
+    signal(SIGINT, close_connections);
+    signal(SIGKILL, close_connections);
+
+    // INITAL VALUES
+    int err;
+    bool end_client = false;
+
+    // INITIAL FUNCTIONS
+    if (argc > 3) {
+        fatal("Usage: %s host [port]\n", argv[0]);
+    }
+
+    // set default port
+    if (argc == 2) {
+        argv[2] = STR(PORT);
+    }
+
+    // setting up client socket
+    set_client_socket(argv[1], argv[2]);
+
     // make standard input nonblocking
     err = fcntl(STDIN, F_SETFL, fcntl(STDIN, F_GETFL, 0) | O_NONBLOCK);
     if (err < 0) {
         syserr("fcntl() failed");
     }
 
-    // make client socket nonblocking
-    err = fcntl(client_socket, F_SETFL, fcntl(client_socket, F_GETFL, 0) | O_NONBLOCK);
-    if (err < 0) {
-        syserr("fcntl() failed");
-    }
-
+    // init descriptors for poll
     memset(descriptors, 0, sizeof(descriptors));
     descriptors[0].fd = client_socket;
     descriptors[0].events = POLLIN | POLLHUP;
@@ -135,6 +146,7 @@ int main(int argc, char *argv[])
     descriptors[1].fd = STDIN;
     descriptors[1].events = POLLIN | POLLHUP;
 
+    // CLIENT
     while (!end_client) {
         // clear buffers
         memset(read_buffer, 0, sizeof(read_buffer));
