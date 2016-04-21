@@ -18,16 +18,16 @@
 
 int client_socket = -1;
 
-void close_connection()
+void close_connections()
 {
     debug_print("%s\n", "[client] closing connection");
-    close(client_socket);
+    shutdown(client_socket, 2);
 }
 
 int main(int argc, char *argv[])
 {
-    signal(SIGINT, close_connection);
-    signal(SIGKILL, close_connection);
+    signal(SIGINT, close_connections);
+    signal(SIGKILL, close_connections);
 
     int err;
     struct addrinfo addr_hints;
@@ -35,6 +35,7 @@ int main(int argc, char *argv[])
     char read_buffer[BUFFER_SIZE];
     char send_buffer[BUFFER_SIZE];
     ssize_t rcv_len;
+    bool end_client = false;
 
     if (argc > 3) {
         fatal("Usage: %s host [port]\n", argv[0]);
@@ -81,15 +82,20 @@ int main(int argc, char *argv[])
         syserr("fcntl() failed");
     }
 
-    while (true) {
-        int bytes_received = read(STDIN, &send_buffer, 1000);
+    while (!end_client) {
+        // clear buffers
+        memset(read_buffer, 0, sizeof(read_buffer));
+        memset(send_buffer, 0, sizeof(send_buffer));
+
+        int bytes_received = read(STDIN, &send_buffer, BUFFER_SIZE);
         if (bytes_received < 0) {
             if (errno != EWOULDBLOCK) {
                 syserr("read() failed");
             }
-        }
-
-        if (bytes_received > 0) {
+        } else if (bytes_received == 0) {
+            // we will no longer read anything from read socket
+            end_client = true;
+        } else {
             debug_print("%s\n", "sending message to server");
 
             bytes_received--; // remove new line
@@ -98,35 +104,21 @@ int main(int argc, char *argv[])
             }
         }
 
-        memset(read_buffer, 0, sizeof(read_buffer));
         rcv_len = read(client_socket, read_buffer, sizeof(read_buffer) - 1);
         if (rcv_len < 0) {
             if (errno != EWOULDBLOCK) {
                 syserr("read() failed");
             }
-        }
-
-        if (rcv_len == 0) {
-            printf("%s\n", "Something wrong happened. Connection has been closed");
-            close_connection();
+        } else if (rcv_len == 0) {
+            printf("%s\n", "Something wrong happened. Connection closed");
+            close_connections();
             return 100;
-        }
-
-        if (rcv_len > 0) {
+        } else {
             debug_print("read message from server [%s] (%zd bytes)\n", read_buffer, rcv_len);
+            printf("%s\n", read_buffer);
         }
-
-        // clear buffer
-        memset(read_buffer, 0, sizeof(read_buffer));
-        memset(send_buffer, 0, sizeof(send_buffer));
-
-        // sleep(1);
     }
 
-    err = close(client_socket);
-    if (err < 0) {
-        syserr("close() failed");
-    }
-
+    close_connections();
     return 0;
 }

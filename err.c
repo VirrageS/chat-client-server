@@ -15,7 +15,7 @@ void syserr(const char *fmt, ...)
   va_end(fmt_args);
   fprintf(stderr, " (%d; %s)\n", errno, strerror(errno));
 
-  close_connection();
+  close_connections();
 
   exit(EXIT_FAILURE);
 }
@@ -30,7 +30,7 @@ void fatal(const char *fmt, ...)
   va_end(fmt_args);
   fprintf(stderr, "\n");
 
-  close_connection();
+  close_connections();
 
   exit(EXIT_FAILURE);
 }

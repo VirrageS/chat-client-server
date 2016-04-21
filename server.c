@@ -30,15 +30,15 @@ int listen_socket = -1;
 
 // buffer_t read_buffer[MAX_CLIENTS];
 
-void close_connection()
+void close_connections()
 {
     debug_print("%s\n", "[server] closing connection");
 
     for (int k = 1; k < connections_len; ++k) {
-        close(connections[k].fd);
+        shutdown(connections[k].fd, 2);
     }
 
-    close(listen_socket);
+    shutdown(listen_socket, 2);
 }
 
 
@@ -64,10 +64,22 @@ void broadcast_message(buffer_t *buf, connection_t conn)
     memset(buf->buffer, 0, sizeof(buf->buffer));
 }
 
+void compress_connections()
+{
+    for (int i = 0; i < connections_len; i++) {
+        if (connections[i].fd == -1) {
+            for (int j = i; j < connections_len; j++)
+                connections[j].fd = connections[j + 1].fd;
+
+            connections_len--;
+        }
+    }
+}
+
 int main(int argc, char *argv[])
 {
-    signal(SIGINT, close_connection);
-    signal(SIGKILL, close_connection);
+    signal(SIGINT, close_connections);
+    signal(SIGKILL, close_connections);
 
     // INITIAL VALUES
     int on = 1; // WTF?! magic..
@@ -126,7 +138,7 @@ int main(int argc, char *argv[])
         syserr("listen() failed");
     }
 
-    //
+    // init listening connection
     memset(connections, 0, sizeof(connections));
     connections[0].fd = listen_socket;
     connections[0].events = POLLIN | POLLHUP;
@@ -185,7 +197,6 @@ int main(int argc, char *argv[])
                 current_buffer->in_buffer = 0;
                 close_connection = false;
                 do {
-
                     ssize_t bytes_received = recv(connections[i].fd, &(current_buffer->buffer[current_buffer->in_buffer]), sizeof(char) * (BUFFER_SIZE - current_buffer->in_buffer - 1), 0);
                     if (bytes_received < 0) {
                         if (errno != EWOULDBLOCK)
@@ -223,25 +234,10 @@ int main(int argc, char *argv[])
             }
         }
 
-        for (int i = 0; i < connections_len; i++) {
-            if (connections[i].fd == -1) {
-                for (int j = i; j < connections_len; j++)
-                    connections[j].fd = connections[j + 1].fd;
-
-                connections_len--;
-            }
-        }
+        compress_connections();
     }
 
     // close all connections which left opened
-    for (int i = 0; i < connections_len; i++) {
-        if (connections[i].fd >= 0) {
-            err = close(connections[i].fd);
-            if (err) {
-                syserr("close() failed");
-            }
-        }
-    }
-
+    close_connections();
     return 0;
 }
