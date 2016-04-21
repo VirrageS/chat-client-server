@@ -3,12 +3,12 @@
 #include <string.h> /* memset */
 #include <unistd.h> /* close */
 #include <stdbool.h>
-#include <sys/ioctl.h>
 #include <sys/poll.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <errno.h>
 #include <signal.h>
+#include <fcntl.h>
 
 #include "err.h"
 #include "chat.h"
@@ -24,8 +24,8 @@ typedef struct {
 
 typedef struct pollfd connection_t;
 
-connection_t connections[MAX_CLIENTS + 10];
-nfds_t connections_len = 1;
+connection_t connections[MAX_CLIENTS + 1];
+nfds_t connections_len = 1, current_conn_len = 0;
 int listen_socket = -1;
 
 // buffer_t read_buffer[MAX_CLIENTS];
@@ -76,38 +76,10 @@ void compress_connections()
     }
 }
 
-int main(int argc, char *argv[])
+void set_listening_socket(uint16_t port)
 {
-    signal(SIGINT, close_connections);
-    signal(SIGKILL, close_connections);
-
-    // INITIAL VALUES
-    int on = 1; // WTF?! magic..
-    int client_socket = -1, err = 0;
-    uint16_t port = 0;
-
+    int err = 0;
     struct sockaddr_in server_address;
-
-    nfds_t current_conn_len = 0;
-
-    bool end_server = false; // checks if we should end server
-    bool close_connection = false; // checks if we should close connection
-
-    buffer_t read_buffer[MAX_CLIENTS];
-
-
-    // INITIAL FUNCTIONS
-    if (argc > 2) {
-        fatal("Usage: %s [port]\n", argv[0]);
-    }
-
-    // check if port has been set
-    if (argc == 2) {
-        long int tmp_port = strtol(argv[1], NULL, 10);
-
-        if (tmp_port > 0L)
-            port = (uint16_t)tmp_port;
-    }
 
     // creating IPv4 TCP socket
     listen_socket = socket(PF_INET, SOCK_STREAM, 0);
@@ -117,7 +89,7 @@ int main(int argc, char *argv[])
 
     // set listening socket to be nonblocking
     // socket with incoming connections will inherit nonblocking state
-    err = ioctl(listen_socket, FIONBIO, (char *)&on);
+    err = fcntl(listen_socket, F_SETFL, fcntl(listen_socket, F_GETFL, 0) | O_NONBLOCK);
     if (err < 0) {
         syserr("ioctl() failed");
     }
@@ -137,12 +109,42 @@ int main(int argc, char *argv[])
     if (err < 0) {
         syserr("listen() failed");
     }
+}
+
+int main(int argc, char *argv[])
+{
+    signal(SIGINT, close_connections);
+    signal(SIGKILL, close_connections);
+
+    // INITIAL VALUES
+    int err = 0;
+    uint16_t port = 0;
+
+    bool end_server = false; // checks if we should end server
+    bool close_connection = false; // checks if we should close connection
+    buffer_t read_buffer[MAX_CLIENTS];
+
+
+    // INITIAL FUNCTIONS
+    if (argc > 2) {
+        fatal("Usage: %s [port]\n", argv[0]);
+    }
+
+    // check if port has been set
+    if (argc == 2) {
+        long int tmp_port = strtol(argv[1], NULL, 10);
+
+        if (tmp_port > 0L)
+            port = (uint16_t)tmp_port;
+    }
+
+    // setting up listening socket (socket, ioctl, bind, listen)
+    set_listening_socket(port);
 
     // init listening connection
     memset(connections, 0, sizeof(connections));
     connections[0].fd = listen_socket;
     connections[0].events = POLLIN | POLLHUP;
-
 
     // SERVER
     while (!end_server) {
@@ -175,6 +177,7 @@ int main(int argc, char *argv[])
                 // listening socket is readable
                 debug_print("%s\n", "listening socket is readable");
 
+                int client_socket = -1;
                 do {
                     client_socket = accept(listen_socket, NULL, NULL);
                     if (client_socket < 0) {
@@ -234,6 +237,7 @@ int main(int argc, char *argv[])
             }
         }
 
+        // remove connections which are not used anymore
         compress_connections();
     }
 

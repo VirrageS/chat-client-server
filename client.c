@@ -1,6 +1,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <sys/ioctl.h>
+#include <sys/poll.h>
 #include <netdb.h>
 #include <stdio.h>
 #include <string.h>
@@ -13,15 +13,64 @@
 #include "err.h"
 #include "chat.h"
 
-#define BUFFER_SIZE 10000
+#define BUFFER_SIZE 2000
 #define STDIN 0
 
+typedef struct pollfd connection_t;
+
 int client_socket = -1;
+connection_t descriptors[2];
+nfds_t descriptors_len = 2;
+char read_buffer[BUFFER_SIZE];
+char send_buffer[BUFFER_SIZE];
 
 void close_connections()
 {
     debug_print("%s\n", "[client] closing connection");
     shutdown(client_socket, 2);
+}
+
+bool read_from_input()
+{
+    bool end_client = false;
+
+    ssize_t bytes_received = read(STDIN, &send_buffer, BUFFER_SIZE);
+    if (bytes_received < 0) {
+        if (errno != EWOULDBLOCK) {
+            syserr("read() failed");
+        }
+    } else if (bytes_received == 0) {
+        // we will no longer read anything from read socket
+        end_client = true;
+    } else {
+        debug_print("%s\n", "sending message to server");
+
+        bytes_received--; // remove new line
+        if (write(client_socket, send_buffer, bytes_received) != bytes_received) {
+            syserr("write() partial / failed");
+        }
+    }
+
+    return end_client;
+}
+
+int read_from_socket()
+{
+    ssize_t rcv_len = read(client_socket, read_buffer, sizeof(read_buffer) - 1);
+    if (rcv_len < 0) {
+        if (errno != EWOULDBLOCK) {
+            syserr("read() failed");
+        }
+    } else if (rcv_len == 0) {
+        printf("%s\n", "Something wrong happened. Connection closed");
+        close_connections();
+        return 100;
+    } else {
+        debug_print("read message from server [%s] (%zd bytes)\n", read_buffer, rcv_len);
+        printf("%s\n", read_buffer);
+    }
+
+    return 0;
 }
 
 int main(int argc, char *argv[])
@@ -32,9 +81,6 @@ int main(int argc, char *argv[])
     int err;
     struct addrinfo addr_hints;
     struct addrinfo *addr_result;
-    char read_buffer[BUFFER_SIZE];
-    char send_buffer[BUFFER_SIZE];
-    ssize_t rcv_len;
     bool end_client = false;
 
     if (argc > 3) {
@@ -82,40 +128,48 @@ int main(int argc, char *argv[])
         syserr("fcntl() failed");
     }
 
+    memset(descriptors, 0, sizeof(descriptors));
+    descriptors[0].fd = client_socket;
+    descriptors[0].events = POLLIN | POLLHUP;
+
+    descriptors[1].fd = STDIN;
+    descriptors[1].events = POLLIN | POLLHUP;
+
     while (!end_client) {
         // clear buffers
         memset(read_buffer, 0, sizeof(read_buffer));
         memset(send_buffer, 0, sizeof(send_buffer));
 
-        int bytes_received = read(STDIN, &send_buffer, BUFFER_SIZE);
-        if (bytes_received < 0) {
-            if (errno != EWOULDBLOCK) {
-                syserr("read() failed");
-            }
-        } else if (bytes_received == 0) {
-            // we will no longer read anything from read socket
-            end_client = true;
-        } else {
-            debug_print("%s\n", "sending message to server");
-
-            bytes_received--; // remove new line
-            if (write(client_socket, send_buffer, bytes_received) != bytes_received) {
-                syserr("write() partial / failed");
-            }
+        // call poll() and wait 3 minutes for it to complete
+        err = poll(descriptors, descriptors_len, 3 * 60 * 1000);
+        if (err < 0) {
+            syserr("poll() failed");
         }
 
-        rcv_len = read(client_socket, read_buffer, sizeof(read_buffer) - 1);
-        if (rcv_len < 0) {
-            if (errno != EWOULDBLOCK) {
-                syserr("read() failed");
+        if (err == 0) {
+            debug_print("%s\n", "poll() timed out. exiting...");
+            break;
+        }
+
+        for (int i = 0; i < descriptors_len; ++i) {
+            if (descriptors[i].revents == 0)
+                continue;
+
+            if (!(descriptors[i].revents & (POLLIN | POLLHUP))) {
+                debug_print("[ERROR] revents = %d\n", descriptors[i].revents);
+                end_client = true;
+                break;
             }
-        } else if (rcv_len == 0) {
-            printf("%s\n", "Something wrong happened. Connection closed");
-            close_connections();
-            return 100;
-        } else {
-            debug_print("read message from server [%s] (%zd bytes)\n", read_buffer, rcv_len);
-            printf("%s\n", read_buffer);
+
+            if (descriptors[i].fd == STDIN) {
+                end_client = read_from_input();
+            } else if (descriptors[i].fd == client_socket) {
+                int signal_code = read_from_socket();
+                if (signal_code != 0)
+                    return signal_code;
+            } else {
+                debug_print("%s\n", "default descriptor?!");
+            }
         }
     }
 
