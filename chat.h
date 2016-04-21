@@ -7,6 +7,7 @@
 #define DEBUG 1
 
 #define PORT 20160
+#define MAX_MESSAGE_SIZE 1000
 // #define MESSAGE_SIZE 2000
 
 // typedef struct {

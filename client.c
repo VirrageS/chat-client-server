@@ -43,9 +43,21 @@ bool read_from_input()
         // we will no longer read anything from read socket
         end_client = true;
     } else {
-        debug_print("%s\n", "sending message to server");
-
         bytes_received--; // remove new line
+        if ((bytes_received > MAX_MESSAGE_SIZE) || (bytes_received == 0)) {
+            debug_print("%s\n", "message too long... not sending to server");
+            return end_client;
+        }
+
+        // TODO: change single write to while: (http://stackoverflow.com/questions/9140409/transfer-integer-over-a-socket-in-c)
+
+        uint16_t msg_length = htons((uint16_t) bytes_received);
+        debug_print("sending %zd (%zd) number to server\n", bytes_received, msg_length);
+        if (write(client_socket, (char*)&msg_length, sizeof(msg_length)) != sizeof(msg_length)) {
+            syserr("write() partial / failed");
+        }
+
+        debug_print("%s\n", "sending message to server");
         if (write(client_socket, send_buffer, bytes_received) != bytes_received) {
             syserr("write() partial / failed");
         }
