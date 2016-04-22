@@ -42,10 +42,10 @@ void broadcast_message(int fd, buffer_t *buf)
             if ((connections[k].fd <= 0) || (fd == connections[k].fd) || (listen_socket == connections[k].fd))
                 continue;
 
-            debug_print("broadcasting (from: %d; message: [%s] (bytes %zd); to: %d)\n", fd, buf->buffer, buf->msg_length, connections[k].fd);
+            debug_print("broadcasting (from: %d; message: [%s] (bytes %u); to: %d)\n", fd, buf->buffer, buf->msg_length, connections[k].fd);
 
             uint16_t msg_length = htons(buf->msg_length);
-            debug_print("sending %zd (%u) number to client\n", buf->msg_length, msg_length);
+            debug_print("sending %u (%u) number to client\n", buf->msg_length, msg_length);
             if (send(connections[k].fd, (char*)&msg_length, sizeof(msg_length), 0) != sizeof(msg_length)) {
                 syserr("write() partial / failed");
             }
