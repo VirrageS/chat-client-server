@@ -15,19 +15,36 @@
 
 #define BUFFER_SIZE 2000
 #define STDIN 0
+#define STDOUT 1
 
 typedef struct pollfd connection_t;
 
 int client_socket = -1;
 connection_t descriptors[2];
 nfds_t descriptors_len = 2;
-char read_buffer[BUFFER_SIZE];
+buffer_t read_buffer;
 char send_buffer[BUFFER_SIZE];
 
 void close_connections()
 {
     debug_print("%s\n", "[client] closing connection");
     shutdown(client_socket, 2);
+}
+
+void try_sending_message(int fd, buffer_t *buf)
+{
+    debug_print("%s\n", "client write message to output");
+    while (buf->has_message) {
+        if (write(STDOUT, buf->buffer, buf->msg_length) != buf->msg_length) {
+            syserr("write() partial / failed");
+        }
+
+        // remove only message
+        clean_buffer(buf, false);
+
+        // refresh info
+        update_buffer_info(buf);
+    }
 }
 
 bool read_from_input()
@@ -52,13 +69,13 @@ bool read_from_input()
         // TODO: change single write to while: (http://stackoverflow.com/questions/9140409/transfer-integer-over-a-socket-in-c)
 
         uint16_t msg_length = htons((uint16_t) bytes_received);
-        debug_print("sending %zd (%zd) number to server\n", bytes_received, msg_length);
-        if (write(client_socket, (char*)&msg_length, sizeof(msg_length)) != sizeof(msg_length)) {
+        debug_print("sending %zd (%u) number to server\n", bytes_received, msg_length);
+        if (send(client_socket, (char*)&msg_length, sizeof(msg_length), 0) != sizeof(msg_length)) {
             syserr("write() partial / failed");
         }
 
         debug_print("%s\n", "sending message to server");
-        if (write(client_socket, send_buffer, bytes_received) != bytes_received) {
+        if (send(client_socket, send_buffer, bytes_received, 0) != bytes_received) {
             syserr("write() partial / failed");
         }
     }
@@ -66,24 +83,24 @@ bool read_from_input()
     return end_client;
 }
 
-int read_from_socket()
-{
-    ssize_t rcv_len = read(client_socket, read_buffer, sizeof(read_buffer) - 1);
-    if (rcv_len < 0) {
-        if (errno != EWOULDBLOCK) {
-            syserr("read() failed");
-        }
-    } else if (rcv_len == 0) {
-        printf("%s\n", "Something wrong happened. Connection closed");
-        close_connections();
-        return 100;
-    } else {
-        debug_print("read message from server [%s] (%zd bytes)\n", read_buffer, rcv_len);
-        printf("%s\n", read_buffer);
-    }
-
-    return 0;
-}
+// int read_from_socket()
+// {
+//     ssize_t rcv_len = read(client_socket, read_buffer, sizeof(read_buffer) - 1);
+//     if (rcv_len < 0) {
+//         if (errno != EWOULDBLOCK) {
+//             syserr("read() failed");
+//         }
+//     } else if (rcv_len == 0) {
+//         printf("%s\n", "Something wrong happened. Connection closed");
+//         close_connections();
+//         return 100;
+//     } else {
+//         debug_print("read message from server [%s] (%zd bytes)\n", read_buffer, rcv_len);
+//         printf("%s\n", read_buffer);
+//     }
+//
+//     return 0;
+// }
 
 void set_client_socket(char *host, char *port)
 {
@@ -158,10 +175,12 @@ int main(int argc, char *argv[])
     descriptors[1].fd = STDIN;
     descriptors[1].events = POLLIN | POLLHUP;
 
+    // clear buffers
+    clean_buffer(&read_buffer, true);
+
     // CLIENT
     while (!end_client) {
-        // clear buffers
-        memset(read_buffer, 0, sizeof(read_buffer));
+        // TODO: we should not clean this after every trip?
         memset(send_buffer, 0, sizeof(send_buffer));
 
         // call poll() and wait 3 minutes for it to complete
@@ -188,9 +207,10 @@ int main(int argc, char *argv[])
             if (descriptors[i].fd == STDIN) {
                 end_client = read_from_input();
             } else if (descriptors[i].fd == client_socket) {
-                int signal_code = read_from_socket();
-                if (signal_code != 0)
-                    return signal_code;
+                bool close_connection = read_from_socket(client_socket, &read_buffer);
+
+                if (close_connection)
+                    return 100;
             } else {
                 debug_print("%s\n", "default descriptor?!");
             }

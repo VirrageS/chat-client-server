@@ -14,14 +14,6 @@
 #include "chat.h"
 
 #define MAX_CLIENTS 20
-#define BUFFER_SIZE 2000
-
-typedef struct {
-    uint16_t msg_length;
-    ssize_t in_buffer; // how many bytes is in buffer
-    int has_message; // check if message is ready
-    char buffer[BUFFER_SIZE]; // buffer
-} buffer_t;
 
 typedef struct pollfd connection_t;
 
@@ -42,55 +34,24 @@ void close_connections()
     shutdown(listen_socket, 2);
 }
 
-void update_buffer_info(buffer_t *buf)
+
+void broadcast_message(int fd, buffer_t *buf)
 {
-    if ((buf->msg_length > 0) && (buf->in_buffer >= buf->msg_length))
-        buf->has_message = true;
-
-    if ((buf->in_buffer < 2) || (buf->msg_length > 0)) {
-        return;
-    }
-
-    buf->msg_length = buf->buffer[0] | buf->buffer[1] << 8;
-    buf->msg_length = ntohs(buf->msg_length);
-
-    memmove(&buf->buffer[0], &buf->buffer[2], sizeof(char) * (BUFFER_SIZE - 2));
-    buf->in_buffer -= 2;
-
-    if (buf->in_buffer >= buf->msg_length)
-        buf->has_message = true;
-}
-
-void clean_buffer(buffer_t *buf, bool force)
-{
-    if (!force) {
-        memmove(&buf->buffer[0], &buf->buffer[buf->msg_length], sizeof(char) * (BUFFER_SIZE - buf->msg_length));
-        buf->in_buffer -= buf->msg_length;
-        buf->msg_length = 0;
-        buf->has_message = false;
-    } else {
-        buf->msg_length = 0;
-        buf->in_buffer = 0;
-        buf->has_message = false;
-        memset(buf->buffer, 0, sizeof(buf->buffer));
-    }
-}
-
-
-void broadcast_message(buffer_t *buf, connection_t conn)
-{
-    int err;
-
     while (buf->has_message) {
         for (int k = 0; k < connections_len; ++k) {
-            if ((connections[k].fd <= 0) || (conn.fd == connections[k].fd) || (listen_socket == connections[k].fd))
+            if ((connections[k].fd <= 0) || (fd == connections[k].fd) || (listen_socket == connections[k].fd))
                 continue;
 
-            debug_print("broadcasting (from: %d; message: [%s] (bytes %zd); to: %d)\n", conn.fd, buf->buffer, buf->msg_length, connections[k].fd);
-            err = send(connections[k].fd, buf->buffer, buf->msg_length, 0);
-            if (err < 0) {
-                syserr("send() failed");
-                break;
+            debug_print("broadcasting (from: %d; message: [%s] (bytes %zd); to: %d)\n", fd, buf->buffer, buf->msg_length, connections[k].fd);
+
+            uint16_t msg_length = htons(buf->msg_length);
+            debug_print("sending %zd (%u) number to server\n", buf->msg_length, msg_length);
+            if (send(connections[k].fd, (char*)&msg_length, sizeof(msg_length), 0) != sizeof(msg_length)) {
+                syserr("write() partial / failed");
+            }
+
+            if (send(connections[k].fd, buf->buffer, buf->msg_length, 0) != buf->msg_length) {
+                syserr("send() partial / failed");
             }
         }
 
@@ -100,6 +61,12 @@ void broadcast_message(buffer_t *buf, connection_t conn)
         // refresh info
         update_buffer_info(buf);
     }
+}
+
+void try_sending_message(int fd, buffer_t *buf)
+{
+    debug_print("%s\n", "trying to send message");
+    broadcast_message(fd, buf);
 }
 
 void compress_connections()
@@ -240,41 +207,7 @@ int main(int argc, char *argv[])
                 } while (client_socket != -1);
             } else {
                 debug_print("descriptor %d is readable\n", connections[i].fd);
-
-                buffer_t *current_buffer = &read_buffer[i];
-                current_buffer->in_buffer = 0;
-                close_connection = false;
-                do {
-                    ssize_t bytes_received = recv(connections[i].fd, &(current_buffer->buffer[current_buffer->in_buffer]), sizeof(char) * (BUFFER_SIZE - current_buffer->in_buffer - 1), 0);
-                    if (bytes_received < 0) {
-                        if (errno != EWOULDBLOCK)
-                            syserr("recv() failed");
-
-                        break;
-                    } else if (bytes_received == 0) {
-                        // check if connection has been closed by client
-                        debug_print("connection %d closed\n", connections[i].fd);
-                        close_connection = true;
-                        break;
-                    }
-
-                    current_buffer->in_buffer += bytes_received;
-                    update_buffer_info(current_buffer);
-
-                    // check if buffer has exceeded 1000 bytes
-                    if (current_buffer->in_buffer > MAX_MESSAGE_SIZE) {
-                        debug_print("%s\n", "message has exceeded allowed length");
-                        close_connection = true;
-                        break;
-                    }
-
-                    debug_print("message: [%s] (bytes %zd)\n", current_buffer->buffer, current_buffer->in_buffer);
-                } while (true);
-
-                // broadcast message
-                if (current_buffer->has_message) {
-                    broadcast_message(current_buffer, connections[i]);
-                }
+                close_connection = read_from_socket(connections[i].fd, &read_buffer[i]);
             }
 
             if (close_connection) {
