@@ -98,7 +98,7 @@ void set_listening_socket(uint16_t port)
     // socket with incoming connections will inherit nonblocking state
     err = fcntl(listen_socket, F_SETFL, fcntl(listen_socket, F_GETFL, 0) | O_NONBLOCK);
     if (err < 0) {
-        syserr("ioctl() failed");
+        syserr("fcntl() failed");
     }
 
     // binding the listening socket
@@ -191,6 +191,12 @@ int main(int argc, char *argv[])
                         }
 
                         break;
+                    }
+
+                    // make socket nonblocking
+                    err = fcntl(client_socket, F_SETFL, fcntl(client_socket, F_GETFL, 0) | O_NONBLOCK);
+                    if (err < 0) {
+                        syserr("fcntl() failed");
                     }
 
                     if (connections_len > MAX_CLIENTS) {
