@@ -45,7 +45,7 @@ void broadcast_message(int fd, buffer_t *buf)
             debug_print("broadcasting (from: %d; message: [%s] (bytes %zd); to: %d)\n", fd, buf->buffer, buf->msg_length, connections[k].fd);
 
             uint16_t msg_length = htons(buf->msg_length);
-            debug_print("sending %zd (%u) number to server\n", buf->msg_length, msg_length);
+            debug_print("sending %zd (%u) number to client\n", buf->msg_length, msg_length);
             if (send(connections[k].fd, (char*)&msg_length, sizeof(msg_length), 0) != sizeof(msg_length)) {
                 syserr("write() partial / failed");
             }

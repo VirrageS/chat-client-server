@@ -13,7 +13,6 @@
 #include "err.h"
 #include "chat.h"
 
-#define BUFFER_SIZE 2000
 #define STDIN 0
 #define STDOUT 1
 
@@ -82,25 +81,6 @@ bool read_from_input()
 
     return end_client;
 }
-
-// int read_from_socket()
-// {
-//     ssize_t rcv_len = read(client_socket, read_buffer, sizeof(read_buffer) - 1);
-//     if (rcv_len < 0) {
-//         if (errno != EWOULDBLOCK) {
-//             syserr("read() failed");
-//         }
-//     } else if (rcv_len == 0) {
-//         printf("%s\n", "Something wrong happened. Connection closed");
-//         close_connections();
-//         return 100;
-//     } else {
-//         debug_print("read message from server [%s] (%zd bytes)\n", read_buffer, rcv_len);
-//         printf("%s\n", read_buffer);
-//     }
-//
-//     return 0;
-// }
 
 void set_client_socket(char *host, char *port)
 {
