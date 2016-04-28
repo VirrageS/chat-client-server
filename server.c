@@ -42,17 +42,14 @@ void broadcast_message(int fd, buffer_t *buf)
             if ((connections[k].fd <= 0) || (fd == connections[k].fd) || (listen_socket == connections[k].fd))
                 continue;
 
+
             debug_print("broadcasting (from: %d; message: [%s] (bytes %u); to: %d)\n", fd, buf->buffer, buf->msg_length, connections[k].fd);
 
-            uint16_t msg_length = htons(buf->msg_length);
-            debug_print("sending %u (%u) number to client\n", buf->msg_length, msg_length);
-            if (send(connections[k].fd, (char*)&msg_length, sizeof(msg_length), 0) != sizeof(msg_length)) {
-                syserr("write() partial / failed");
-            }
+            // create temporary buffer and copy message
+            buffer_t tmp_buffer;
+            memcpy(&tmp_buffer, buf, sizeof(*buf));
 
-            if (send(connections[k].fd, buf->buffer, buf->msg_length, 0) != buf->msg_length) {
-                syserr("send() partial / failed");
-            }
+            write_to_socket(connections[k].fd, &tmp_buffer);
         }
 
         // remove only message
@@ -202,7 +199,12 @@ int main(int argc, char *argv[])
                     if (connections_len > MAX_CLIENTS) {
                         debug_print("%s\n", "rejected new incoming connection");
                         char msg[] = "ERR: Reached max clients connections";
-                        send(client_socket, msg, sizeof(msg), 0);
+
+                        buffer_t buffer_msg;
+                        strcpy(buffer_msg.buffer, msg);
+                        buffer_msg.in_buffer = buffer_msg.msg_length = sizeof(msg);
+
+                        write_to_socket(client_socket, &buffer_msg);
                         close(client_socket);
                     } else {
                         debug_print("new incoming connection - %d\n", client_socket);

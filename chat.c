@@ -63,7 +63,7 @@ bool read_from_socket(int fd, buffer_t *buf)
 
             break;
         } else if (bytes_received == 0) {
-            // check if connection has been closed by client
+            // check if connection has been closed
             debug_print("connection %d closed\n", fd);
             close_connection = true;
             break;
@@ -81,8 +81,35 @@ bool read_from_socket(int fd, buffer_t *buf)
 
 
         try_sending_message(fd, buf);
-        // debug_print("message: [%s] (bytes %zd)\n", buf->buffer, buf->in_buffer);
     } while (true);
 
+    return close_connection;
+}
+
+bool write_to_socket(int fd, buffer_t *buf)
+{
+    bool close_connection = false;
+
+    // add message length at the beginning of the message
+    uint16_t msg_length = htons((uint16_t) buf->msg_length);
+    memmove(&buf->buffer[sizeof(msg_length) / sizeof(char)], &buf->buffer[0], sizeof(char) * (buf->msg_length));
+    memcpy(&buf->buffer[0], (char*)&msg_length, sizeof(msg_length));
+    buf->in_buffer += (sizeof(msg_length) / sizeof(char));
+    buf->msg_length += (sizeof(msg_length) / sizeof(char));
+
+    do {
+        ssize_t bytes_send = send(fd, &buf->buffer[0], sizeof(char) * (buf->msg_length), 0);
+        if (bytes_send < 0) {
+            if (errno != EWOULDBLOCK)
+                syserr("send() failed");
+        }
+
+        // remove send bytes
+        buf->msg_length -= bytes_send;
+        memmove(&buf->buffer[0], &buf->buffer[bytes_send], sizeof(char) * (buf->msg_length));
+    } while (buf->msg_length != 0);
+
+    // clean buffer
+    clean_buffer(buf, true);
     return close_connection;
 }

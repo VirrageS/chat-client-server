@@ -21,8 +21,8 @@ typedef struct pollfd connection_t;
 int client_socket = -1;
 connection_t descriptors[2];
 nfds_t descriptors_len = 2;
-buffer_t read_buffer;
-char send_buffer[BUFFER_SIZE];
+buffer_t read_buffer, send_buffer;
+// char send_buffer[BUFFER_SIZE];
 
 void close_connections()
 {
@@ -50,7 +50,7 @@ bool read_from_input()
 {
     bool end_client = false;
 
-    ssize_t bytes_received = read(STDIN, &send_buffer, BUFFER_SIZE);
+    ssize_t bytes_received = read(STDIN, &send_buffer.buffer, BUFFER_SIZE);
     if (bytes_received < 0) {
         if (errno != EWOULDBLOCK) {
             syserr("read() failed");
@@ -59,23 +59,20 @@ bool read_from_input()
         // we will no longer read anything from read socket
         end_client = true;
     } else {
-        bytes_received--; // remove new line
+        bytes_received--; // remove new line char
+
         if ((bytes_received > MAX_MESSAGE_SIZE) || (bytes_received == 0)) {
             debug_print("%s\n", "message too long... not sending to server");
             return end_client;
         }
 
-        // TODO: change single write to while: (http://stackoverflow.com/questions/9140409/transfer-integer-over-a-socket-in-c)
+        debug_print("sending [%s] message to server", send_buffer.buffer);
 
-        uint16_t msg_length = htons((uint16_t) bytes_received);
-        debug_print("sending %zd (%u) number to server\n", bytes_received, msg_length);
-        if (send(client_socket, (char*)&msg_length, sizeof(msg_length), 0) != sizeof(msg_length)) {
-            syserr("write() partial / failed");
-        }
-
-        debug_print("%s\n", "sending message to server");
-        if (send(client_socket, send_buffer, bytes_received, 0) != bytes_received) {
-            syserr("write() partial / failed");
+        send_buffer.in_buffer = bytes_received;
+        send_buffer.msg_length = bytes_received;
+        bool close_connection = write_to_socket(client_socket, &send_buffer);
+        if (close_connection) {
+            end_client = true;
         }
     }
 
@@ -157,12 +154,10 @@ int main(int argc, char *argv[])
 
     // clear buffers
     clean_buffer(&read_buffer, true);
+    clean_buffer(&send_buffer, true);
 
     // CLIENT
     while (!end_client) {
-        // TODO: we should not clean this after every trip?
-        memset(send_buffer, 0, sizeof(send_buffer));
-
         // call poll() and wait 3 minutes for it to complete
         err = poll(descriptors, descriptors_len, 3 * 60 * 1000);
         if (err < 0) {

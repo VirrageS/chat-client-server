@@ -29,6 +29,7 @@ void update_buffer_info(buffer_t *buf);
 void clean_buffer(buffer_t *buf, bool force);
 
 bool read_from_socket(int fd, buffer_t *buf);
+bool write_to_socket(int fd, buffer_t *buf);
 void try_sending_message(int fd, buffer_t *buf);
 
 #endif
