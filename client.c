@@ -22,7 +22,6 @@ int client_socket = -1;
 connection_t descriptors[2];
 nfds_t descriptors_len = 2;
 buffer_t read_buffer, send_buffer;
-// char send_buffer[BUFFER_SIZE];
 
 void close_connections()
 {

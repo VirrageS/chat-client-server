@@ -19,7 +19,7 @@
 #define BUFFER_SIZE 2000
 
 typedef struct {
-    uint16_t msg_length;
+    uint16_t msg_length; // length of message which is in buffer
     ssize_t in_buffer; // how many bytes is in buffer
     int has_message; // check if message is ready
     char buffer[BUFFER_SIZE]; // buffer
