@@ -37,6 +37,12 @@ void try_sending_message(int fd, buffer_t *buf)
             syserr("write() partial / failed");
         }
 
+        // end the line
+        char msg[] = "\n";
+        if (write(STDOUT, msg, sizeof(msg)) != sizeof(msg)) {
+            syserr("write() partial / failed");
+        }
+
         // remove only message
         clean_buffer(buf, false);
 

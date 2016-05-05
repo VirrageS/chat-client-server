@@ -25,7 +25,7 @@ void update_buffer_info(buffer_t *buf)
 
     buf->msg_length = ntohs(buf->buffer[0] | (buf->buffer[1] << 8));
 
-    memmove(&buf->buffer[0], &buf->buffer[2], sizeof(char) * (buf->in_buffer - 2));
+    memmove(&buf->buffer[0], &buf->buffer[2], (buf->in_buffer - 2));
     buf->in_buffer -= 2;
 
     debug_print("msg_length: %u; in_buffer: %zd; msg: [%s]\n", buf->msg_length, buf->in_buffer, buf->buffer);
@@ -37,7 +37,7 @@ void update_buffer_info(buffer_t *buf)
 void clean_buffer(buffer_t *buf, bool force)
 {
     if (!force) {
-        memmove(&buf->buffer[0], &buf->buffer[buf->msg_length], sizeof(char) * (buf->in_buffer - buf->msg_length));
+        memmove(&buf->buffer[0], &buf->buffer[buf->msg_length], (buf->in_buffer - buf->msg_length));
         buf->in_buffer -= buf->msg_length;
         buf->msg_length = 0;
         buf->has_message = false;
@@ -56,7 +56,7 @@ bool read_from_socket(int fd, buffer_t *buf)
     bool close_connection = false;
 
     do {
-        ssize_t bytes_received = recv(fd, &buf->buffer[buf->in_buffer], sizeof(char) * (BUFFER_SIZE - buf->in_buffer), 0);
+        ssize_t bytes_received = recv(fd, &buf->buffer[buf->in_buffer], (BUFFER_SIZE - buf->in_buffer), 0);
         if (bytes_received < 0) {
             if (errno != EWOULDBLOCK)
                 syserr("recv() failed");
@@ -92,13 +92,13 @@ bool write_to_socket(int fd, buffer_t *buf)
 
     // add message length at the beginning of the message
     uint16_t msg_length = htons((uint16_t) buf->msg_length);
-    memmove(&buf->buffer[sizeof(msg_length) / sizeof(char)], &buf->buffer[0], sizeof(char) * (buf->msg_length));
+    memmove(&buf->buffer[sizeof(msg_length)], &buf->buffer[0], buf->msg_length);
     memcpy(&buf->buffer[0], (char*)&msg_length, sizeof(msg_length));
-    buf->in_buffer += (sizeof(msg_length) / sizeof(char));
-    buf->msg_length += (sizeof(msg_length) / sizeof(char));
+    buf->in_buffer += sizeof(msg_length);
+    buf->msg_length += sizeof(msg_length);
 
     do {
-        ssize_t bytes_send = send(fd, &buf->buffer[0], sizeof(char) * (buf->msg_length), 0);
+        ssize_t bytes_send = send(fd, &buf->buffer[0], buf->msg_length, 0);
         if (bytes_send < 0) {
             if (errno != EWOULDBLOCK)
                 syserr("send() failed");
@@ -106,7 +106,7 @@ bool write_to_socket(int fd, buffer_t *buf)
 
         // remove send bytes
         buf->msg_length -= bytes_send;
-        memmove(&buf->buffer[0], &buf->buffer[bytes_send], sizeof(char) * (buf->msg_length));
+        memmove(&buf->buffer[0], &buf->buffer[bytes_send], buf->msg_length);
     } while (buf->msg_length != 0);
 
     // clean buffer
