@@ -21,14 +21,14 @@ void update_buffer_info(buffer_t *buf)
         return;
     }
 
-    debug_print("msg_length: %u; in_buffer: %zd; msg: [%s]\n", buf->msg_length, buf->in_buffer, buf->buffer);
+    // debug_print("msg_length: %u; in_buffer: %zd; msg: [%s]\n", buf->msg_length, buf->in_buffer, buf->buffer);
 
     buf->msg_length = ntohs(buf->buffer[0] | (buf->buffer[1] << 8));
 
     memmove(&buf->buffer[0], &buf->buffer[2], (buf->in_buffer - 2));
     buf->in_buffer -= 2;
 
-    debug_print("msg_length: %u; in_buffer: %zd; msg: [%s]\n", buf->msg_length, buf->in_buffer, buf->buffer);
+    // debug_print("msg_length: %u; in_buffer: %zd; msg: [%s]\n", buf->msg_length, buf->in_buffer, buf->buffer);
 
     if (buf->in_buffer >= buf->msg_length)
         buf->has_message = true;

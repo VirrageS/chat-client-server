@@ -13,9 +13,6 @@
 #include "err.h"
 #include "chat.h"
 
-#define STDIN 0
-#define STDOUT 1
-
 typedef struct pollfd connection_t;
 
 int client_socket = -1;
@@ -33,15 +30,12 @@ void try_sending_message(int fd, buffer_t *buf)
 {
     debug_print("%s\n", "client write message to output");
     while (buf->has_message) {
-        if (write(STDOUT, buf->buffer, buf->msg_length) != buf->msg_length) {
-            syserr("write() partial / failed");
-        }
+        buffer_t tmp_buf;
+        memcpy(&tmp_buf, buf, sizeof(*buf));
+        tmp_buf.buffer[tmp_buf.msg_length] = '\0';
 
-        // end the line
-        char msg[] = "\n";
-        if (write(STDOUT, msg, sizeof(msg)) != sizeof(msg)) {
-            syserr("write() partial / failed");
-        }
+        printf("%s\n", tmp_buf.buffer);
+        fflush(stdout);
 
         // remove only message
         clean_buffer(buf, false);
@@ -55,7 +49,7 @@ bool read_from_input()
 {
     bool end_client = false;
 
-    ssize_t bytes_received = read(STDIN, &send_buffer.buffer, BUFFER_SIZE);
+    ssize_t bytes_received = read(STDIN_FILENO, &send_buffer.buffer, BUFFER_SIZE);
     if (bytes_received < 0) {
         if (errno != EWOULDBLOCK) {
             syserr("read() failed");
@@ -71,7 +65,7 @@ bool read_from_input()
             return end_client;
         }
 
-        debug_print("sending [%s] message to server", send_buffer.buffer);
+        // debug_print("sending [%s] message to server", send_buffer.buffer);
 
         send_buffer.in_buffer = bytes_received;
         send_buffer.msg_length = bytes_received;
@@ -144,7 +138,7 @@ int main(int argc, char *argv[])
     set_client_socket(argv[1], argv[2]);
 
     // make standard input nonblocking
-    err = fcntl(STDIN, F_SETFL, fcntl(STDIN, F_GETFL, 0) | O_NONBLOCK);
+    err = fcntl(STDIN_FILENO, F_SETFL, fcntl(STDIN_FILENO, F_GETFL, 0) | O_NONBLOCK);
     if (err < 0) {
         syserr("fcntl() failed");
     }
@@ -154,7 +148,7 @@ int main(int argc, char *argv[])
     descriptors[0].fd = client_socket;
     descriptors[0].events = POLLIN | POLLHUP;
 
-    descriptors[1].fd = STDIN;
+    descriptors[1].fd = STDIN_FILENO;
     descriptors[1].events = POLLIN | POLLHUP;
 
     // clear buffers
@@ -184,7 +178,7 @@ int main(int argc, char *argv[])
                 break;
             }
 
-            if (descriptors[i].fd == STDIN) {
+            if (descriptors[i].fd == STDIN_FILENO) {
                 end_client = read_from_input();
             } else if (descriptors[i].fd == client_socket) {
                 bool close_connection = read_from_socket(client_socket, &read_buffer);
