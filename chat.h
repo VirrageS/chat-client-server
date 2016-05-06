@@ -17,6 +17,7 @@
 #define PORT 20160
 #define MAX_MESSAGE_SIZE 1000
 #define BUFFER_SIZE 2000
+#define MAX_CLIENTS 20
 
 typedef struct {
     uint16_t msg_length; // length of message which is in buffer

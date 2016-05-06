@@ -13,13 +13,11 @@
 #include "err.h"
 #include "chat.h"
 
-#define MAX_CLIENTS 20
-
 typedef struct pollfd connection_t;
 
-connection_t connections[MAX_CLIENTS + 1];
+connection_t connections[MAX_CLIENTS + 2];
 nfds_t connections_len = 1, current_conn_len = 0;
-buffer_t read_buffer[MAX_CLIENTS + 1];
+buffer_t read_buffer[MAX_CLIENTS + 2];
 
 int listen_socket = -1;
 
