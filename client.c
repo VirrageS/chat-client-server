@@ -20,21 +20,32 @@ connection_t descriptors[2];
 nfds_t descriptors_len = 2;
 buffer_t read_buffer, send_buffer;
 
+
+/**
+    Closes client connection to server.
+    **/
 void close_connections()
 {
     debug_print("%s\n", "[client] closing connection");
     shutdown(client_socket, 2);
 }
 
+
+/**
+    Writes all messages recieved from server to stdout.
+
+    @param fd File descriptor from which message has arrived.
+    @param buf Buffer which contains all messages.
+    **/
 void try_sending_message(int fd, buffer_t *buf)
 {
     debug_print("%s\n", "client write message to output");
+
     while (buf->has_message) {
         buffer_t tmp_buf;
         memcpy(&tmp_buf, buf, sizeof(*buf));
         tmp_buf.buffer[tmp_buf.msg_length] = '\0';
 
-        fflush(stdout);
         fprintf(stdout, "%s\n", tmp_buf.buffer);
         fflush(stdout);
 

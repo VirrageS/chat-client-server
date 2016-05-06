@@ -15,12 +15,16 @@
 
 typedef struct pollfd connection_t;
 
+// GLOBALS
 connection_t connections[MAX_CLIENTS + 2];
 nfds_t connections_len = 1, current_conn_len = 0;
 buffer_t read_buffer[MAX_CLIENTS + 2];
-
 int listen_socket = -1;
 
+
+/**
+    Closes all connections.
+    **/
 void close_connections()
 {
     debug_print("%s\n", "[server] closing connection");
@@ -33,10 +37,19 @@ void close_connections()
 }
 
 
-void broadcast_message(int fd, buffer_t *buf)
+/**
+    Broadcasts all messages from buffer to clients.
+
+    @param fd File descriptor from which we recieved message.
+    @param buf Buffer which contains all messages to broadcast.
+    **/
+void try_sending_message(int fd, buffer_t *buf)
 {
+    debug_print("%s\n", "trying to broadcast messages");
+
     while (buf->has_message) {
         for (int k = 0; k < connections_len; ++k) {
+            // do not send message to
             if ((connections[k].fd <= 0) || (fd == connections[k].fd) || (listen_socket == connections[k].fd))
                 continue;
 
@@ -58,12 +71,10 @@ void broadcast_message(int fd, buffer_t *buf)
     }
 }
 
-void try_sending_message(int fd, buffer_t *buf)
-{
-    debug_print("%s\n", "trying to send message");
-    broadcast_message(fd, buf);
-}
 
+/**
+    Removes closed connections and cleans their buffers
+    **/
 void compress_connections()
 {
     debug_print("%s\n", "compressing connections");
@@ -87,6 +98,7 @@ void compress_connections()
         }
     }
 }
+
 
 void set_listening_socket(uint16_t port)
 {
@@ -122,6 +134,7 @@ void set_listening_socket(uint16_t port)
         syserr("listen() failed");
     }
 }
+
 
 int main(int argc, char *argv[])
 {
