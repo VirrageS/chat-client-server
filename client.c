@@ -34,7 +34,8 @@ void try_sending_message(int fd, buffer_t *buf)
         memcpy(&tmp_buf, buf, sizeof(*buf));
         tmp_buf.buffer[tmp_buf.msg_length] = '\0';
 
-        printf("%s\n", tmp_buf.buffer);
+        fflush(stdout);
+        fprintf(stdout, "%s\n", tmp_buf.buffer);
         fflush(stdout);
 
         // remove only message

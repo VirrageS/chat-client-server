@@ -12,7 +12,7 @@
 
 #define STR_HELPER(x) #x
 #define STR(x) STR_HELPER(x)
-#define DEBUG 1
+#define DEBUG 0
 
 #define PORT 20160
 #define MAX_MESSAGE_SIZE 1000

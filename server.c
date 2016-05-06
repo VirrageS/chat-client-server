@@ -68,12 +68,22 @@ void try_sending_message(int fd, buffer_t *buf)
 
 void compress_connections()
 {
+    debug_print("%s\n", "compressing connections");
+
     for (int i = 0; i < connections_len; i++) {
         if (connections[i].fd == -1) {
+            debug_print("%s\n", "found connection to delete");
+
             clean_buffer(&read_buffer[i], true);
 
-            for (int j = i; j < connections_len; j++)
-                connections[j].fd = connections[j + 1].fd;
+            for (int j = i; j < connections_len; j++) {
+                memcpy(&connections[j], &connections[j + 1], sizeof(connection_t));
+                memcpy(&read_buffer[j], &read_buffer[j + 1], sizeof(buffer_t));
+            }
+
+            connections[connections_len].fd = -1;
+            connections[connections_len].events = POLLIN | POLLHUP;
+            clean_buffer(&read_buffer[connections_len], true);
 
             connections_len--;
         }
@@ -102,14 +112,14 @@ void set_listening_socket(uint16_t port)
     memset(&server_address, 0, sizeof(server_address));
     server_address.sin_family = AF_INET;
     server_address.sin_addr.s_addr = htonl(INADDR_ANY);
-    server_address.sin_port = htons((port > 0 ? port : PORT));
+    server_address.sin_port = htons(port > 0 ? port : PORT);
     err = bind(listen_socket, (struct sockaddr *) &server_address, sizeof(server_address));
     if (err < 0) {
         syserr("bind() failed");
     }
 
     // setting listening and max clients queue
-    err = listen(listen_socket, 64);
+    err = listen(listen_socket, MAX_CLIENTS);
     if (err < 0) {
         syserr("listen() failed");
     }
@@ -219,12 +229,14 @@ int main(int argc, char *argv[])
             }
 
             if (close_connection) {
+                debug_print("closing connection: %d\n", connections[i].fd);
                 err = close(connections[i].fd);
                 if (err < 0) {
                     syserr("close() failed");
                 }
 
                 connections[i].fd = -1;
+                close_connection = false;
             }
         }
 
