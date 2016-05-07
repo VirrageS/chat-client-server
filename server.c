@@ -36,6 +36,12 @@ void close_connections()
     shutdown(listen_socket, 2);
 }
 
+void handle_signal(int sig)
+{
+    close_connections();
+    exit(sig);
+}
+
 
 /**
     Broadcasts all messages from buffer to clients.
@@ -138,15 +144,14 @@ void set_listening_socket(uint16_t port)
 
 int main(int argc, char *argv[])
 {
-    signal(SIGINT, close_connections);
-    signal(SIGKILL, close_connections);
+    signal(SIGINT, handle_signal);
+    signal(SIGKILL, handle_signal);
 
     // INITIAL VALUES
     int err = 0;
     uint16_t port = 0;
 
     bool end_server = false; // checks if we should end server
-    bool close_connection = false; // checks if we should close connection
 
     // INITIAL FUNCTIONS
     if (argc > 2) {
@@ -196,6 +201,8 @@ int main(int argc, char *argv[])
                 break;
             }
 
+            int close_connection = 0; // checks if we should close connection
+
             if (connections[i].fd == listen_socket) {
                 // listening socket is readable
                 debug_print("%s\n", "listening socket is readable");
@@ -239,7 +246,7 @@ int main(int argc, char *argv[])
                 close_connection = read_from_socket(connections[i].fd, &read_buffer[i]);
             }
 
-            if (close_connection) {
+            if (close_connection < 0) {
                 debug_print("closing connection: %d\n", connections[i].fd);
                 err = close(connections[i].fd);
                 if (err < 0) {
@@ -247,7 +254,6 @@ int main(int argc, char *argv[])
                 }
 
                 connections[i].fd = -1;
-                close_connection = false;
             }
         }
 

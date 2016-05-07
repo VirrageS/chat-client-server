@@ -28,6 +28,7 @@ void close_connections()
 {
     debug_print("%s\n", "[client] closing connection");
     shutdown(client_socket, 2);
+    exit(0);
 }
 
 
@@ -193,10 +194,14 @@ int main(int argc, char *argv[])
             if (descriptors[i].fd == STDIN_FILENO) {
                 end_client = read_from_input();
             } else if (descriptors[i].fd == client_socket) {
-                bool close_connection = read_from_socket(client_socket, &read_buffer);
+                int close_connection = read_from_socket(client_socket, &read_buffer);
 
-                if (close_connection)
+                if (close_connection == -1) {
+                    fprintf(stderr, "Message wrong format. Exiting.\n");
                     return 100;
+                } else if (close_connection == -2) {
+                    return 0;
+                }
             } else {
                 debug_print("%s\n", "default descriptor?!");
             }

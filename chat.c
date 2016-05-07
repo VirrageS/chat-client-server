@@ -51,9 +51,9 @@ void clean_buffer(buffer_t *buf, bool force)
     debug_print("[clean_buffer] in_buffer: %zd; msg_length: %u;\n", buf->in_buffer, buf->msg_length);
 }
 
-bool read_from_socket(int fd, buffer_t *buf)
+int read_from_socket(int fd, buffer_t *buf)
 {
-    bool close_connection = false;
+    int close_connection = 0;
 
     do {
         ssize_t bytes_received = recv(fd, &buf->buffer[buf->in_buffer], (BUFFER_SIZE - buf->in_buffer), 0);
@@ -65,7 +65,7 @@ bool read_from_socket(int fd, buffer_t *buf)
         } else if (bytes_received == 0) {
             // check if connection has been closed
             debug_print("connection %d closed\n", fd);
-            close_connection = true;
+            close_connection = -2;
             break;
         }
 
@@ -75,10 +75,21 @@ bool read_from_socket(int fd, buffer_t *buf)
         // check if message has exceeded 1000 bytes
         if (buf->msg_length > MAX_MESSAGE_SIZE) {
             debug_print("%s\n", "message has exceeded allowed length");
-            close_connection = true;
+            close_connection = -1;
             break;
         }
 
+        if (buf->msg_length > 0) {
+            for (int i = 0; i < buf->in_buffer; ++i) {
+                if ((buf->buffer[i] == '\0') || (buf->buffer[i] == '\n')) {
+                    close_connection = -1;
+                    break;
+                }
+            }
+
+            if (close_connection < 0)
+                break;
+        }
 
         try_sending_message(fd, buf);
     } while (true);
