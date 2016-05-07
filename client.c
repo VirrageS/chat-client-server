@@ -28,7 +28,13 @@ void close_connections()
 {
     debug_print("%s\n", "[client] closing connection");
     shutdown(client_socket, 2);
-    exit(0);
+}
+
+
+void handle_signal(int sig)
+{
+    close_connections();
+    exit(sig);
 }
 
 
@@ -130,8 +136,8 @@ void set_client_socket(char *host, char *port)
 
 int main(int argc, char *argv[])
 {
-    signal(SIGINT, close_connections);
-    signal(SIGKILL, close_connections);
+    signal(SIGINT, handle_signal);
+    signal(SIGKILL, handle_signal);
 
     // INITAL VALUES
     int err;
@@ -198,9 +204,13 @@ int main(int argc, char *argv[])
 
                 if (close_connection == -1) {
                     fprintf(stderr, "Message wrong format. Exiting.\n");
+                    close_connections();
+
                     return 100;
                 } else if (close_connection == -2) {
-                    return 0;
+                    // connection has been closed (probably by server)
+
+                    end_client = true;
                 }
             } else {
                 debug_print("%s\n", "default descriptor?!");
