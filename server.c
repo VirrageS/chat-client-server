@@ -23,11 +23,41 @@ int listen_socket = -1;
 
 
 /**
+    Removes closed connections and cleans their buffers
+    **/
+void compress_connections()
+{
+    debug_print("%s\n", "compressing connections");
+
+    for (int i = 0; i < connections_len; i++) {
+        if (connections[i].fd == -1) {
+            debug_print("%s\n", "found connection to delete");
+
+            clean_buffer(&read_buffer[i], true);
+
+            for (int j = i; j < connections_len; j++) {
+                memcpy(&connections[j], &connections[j + 1], sizeof(connection_t));
+                memcpy(&read_buffer[j], &read_buffer[j + 1], sizeof(buffer_t));
+            }
+
+            connections[connections_len].fd = -1;
+            connections[connections_len].events = POLLIN | POLLHUP;
+            clean_buffer(&read_buffer[connections_len], true);
+
+            connections_len--;
+        }
+    }
+}
+
+
+/**
     Closes all connections.
     **/
 void close_connections()
 {
     debug_print("%s\n", "[server] closing connection");
+
+    compress_connections();
 
     for (int k = 1; k < connections_len; ++k) {
         shutdown(connections[k].fd, 2);
@@ -54,9 +84,9 @@ void try_sending_message(int fd, buffer_t *buf)
     debug_print("%s\n", "trying to broadcast messages");
 
     while (buf->has_message) {
-        for (int k = 0; k < connections_len; ++k) {
-            // do not send message to
-            if ((connections[k].fd <= 0) || (fd == connections[k].fd) || (listen_socket == connections[k].fd))
+        for (int k = 1; k < connections_len; ++k) {
+            // do not send message to source
+            if ((connections[k].fd <= 0) || (fd == connections[k].fd))
                 continue;
 
 
@@ -74,34 +104,6 @@ void try_sending_message(int fd, buffer_t *buf)
 
         // refresh info
         update_buffer_info(buf);
-    }
-}
-
-
-/**
-    Removes closed connections and cleans their buffers
-    **/
-void compress_connections()
-{
-    debug_print("%s\n", "compressing connections");
-
-    for (int i = 0; i < connections_len; i++) {
-        if (connections[i].fd == -1) {
-            debug_print("%s\n", "found connection to delete");
-
-            clean_buffer(&read_buffer[i], true);
-
-            for (int j = i; j < connections_len; j++) {
-                memcpy(&connections[j], &connections[j + 1], sizeof(connection_t));
-                memcpy(&read_buffer[j], &read_buffer[j + 1], sizeof(buffer_t));
-            }
-
-            connections[connections_len].fd = -1;
-            connections[connections_len].events = POLLIN | POLLHUP;
-            clean_buffer(&read_buffer[connections_len], true);
-
-            connections_len--;
-        }
     }
 }
 
