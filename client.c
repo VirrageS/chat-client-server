@@ -77,17 +77,19 @@ bool read_from_input()
         // we will no longer read anything from read socket
         end_client = true;
     } else {
-        bytes_received--; // remove new line char
+        if (send_buffer.buffer[bytes_received - 1] == '\n')
+            bytes_received--; // remove new line char
 
-        if ((bytes_received > MAX_MESSAGE_SIZE) || (bytes_received == 0)) {
-            debug_print("%s\n", "message too long... not sending to server");
+        if (bytes_received == 0) {
             return end_client;
         }
 
         // debug_print("sending [%s] message to server", send_buffer.buffer);
 
+        send_buffer.msg_length = (bytes_received > MAX_MESSAGE_SIZE ? MAX_MESSAGE_SIZE : bytes_received);
         send_buffer.in_buffer = bytes_received;
-        send_buffer.msg_length = bytes_received;
+        send_buffer.has_message = true;
+
         bool close_connection = write_to_socket(client_socket, &send_buffer);
         if (close_connection) {
             end_client = true;
