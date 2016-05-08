@@ -206,7 +206,7 @@ int main(int argc, char *argv[])
                     fprintf(stderr, "Message wrong format. Exiting.\n");
                     close_connections();
 
-                    return 100;
+                    exit(100);
                 } else if (close_connection == -2) {
                     // connection has been closed (probably by server)
 
