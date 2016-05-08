@@ -22,7 +22,6 @@ void update_buffer_info(buffer_t *buf)
     }
 
     // debug_print("msg_length: %u; in_buffer: %zd; msg: [%s]\n", buf->msg_length, buf->in_buffer, buf->buffer);
-
     buf->msg_length = ntohs(buf->buffer[0] | (buf->buffer[1] << 8));
 
     memmove(&buf->buffer[0], &buf->buffer[2], (buf->in_buffer - 2));
@@ -80,10 +79,12 @@ int read_from_socket(int fd, buffer_t *buf)
         }
 
         if (buf->msg_length > 0) {
-            for (int i = 0; i < buf->in_buffer; ++i) {
-                if ((buf->buffer[i] == '\0') || (buf->buffer[i] == '\n')) {
+            // check if there is illegal character in message
+            for (int i = 0; i < buf->msg_length; ++i) {
+                char c = buf->buffer[i];
+
+                if ((c == '\0') || (c == '\n')) {
                     close_connection = -1;
-                    break;
                 }
             }
 
