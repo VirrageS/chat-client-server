@@ -78,20 +78,6 @@ int read_from_socket(int fd, buffer_t *buf)
             break;
         }
 
-        if (buf->msg_length > 0) {
-            // check if there is illegal character in message
-            for (int i = 0; i < buf->msg_length; ++i) {
-                char c = buf->buffer[i];
-
-                if ((c == '\0') || (c == '\n')) {
-                    close_connection = -1;
-                }
-            }
-
-            if (close_connection < 0)
-                break;
-        }
-
         try_sending_message(fd, buf);
     } while (true);
 
