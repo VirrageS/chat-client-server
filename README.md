@@ -6,16 +6,16 @@ Simple chat written in C.
 
 To start server type: 
 
-  $ make
-  $ ./server [port]
+    $ make
+    $ ./server [port]
   
 Port parameter is optional. If not set, it will
 be listening on `20160`.
 
 To start client type:
 
-  $ make
-  $ ./client [host] [port]
+    $ make
+    $ ./client [host] [port]
   
 To connect client to server we need to provide host
 (if testing on one machine just type `localhost`).
